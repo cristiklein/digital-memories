@@ -12,6 +12,7 @@ import exiftool
 import logging
 from os import link, listdir, makedirs
 from os.path import exists, dirname, isdir, join, splitext, expanduser
+from os.path import split as pathsplit
 import re
 from shutil import copyfile
 import subprocess
@@ -114,9 +115,12 @@ def getFileInfo(fileName):
 
 	return year, month, day, hour, minute, second, discriminator, orientation, event
 
-def importPath(path, importTo):
+def importPath(importFrom, importTo, currentPath = None):
+	if currentPath is None:
+		currentPath = importFrom
+
 	lastDateTime = None
-	for item in sorted(listdir(path)):
+	for item in sorted(listdir(currentPath)):
 		# Ignore lame gthumb folders
 		if item == ".comments": continue
 
@@ -124,9 +128,9 @@ def importPath(path, importTo):
 		if item[-9:] == "_original": continue
 
 		extension = splitext(item)[1].lower()
-		fullItemPath = join(path, item)
+		fullItemPath = join(currentPath, item)
 		if isdir(fullItemPath):
-			importPath(fullItemPath, importTo)
+			importPath(importFrom, importTo, fullItemPath)
 		elif extension in ".3gp .avi .jpg .mov .m4a .mp4 .pdf .png".split():
 			# Convert AVIs to MP4s using avconv, which preserved date time metadata
 			if extension == '.avi':
@@ -144,6 +148,15 @@ def importPath(path, importTo):
 				if orientation is not None and int(orientation) not in [ 0, 1 ]:
 					logging.info('Image is not physically rotated "%s", orientation %d; rotating', fullItemPath, orientation)
 					subprocess.call(['exiftran', '-ai', fullItemPath])
+
+				# Check if we can assign a label to the file
+				if event is None:
+					pathHead, pathTail = pathsplit(dirname(fullItemPath))
+					if pathHead == importFrom:
+						event = pathTail
+						# TODO: use the exiftool module
+						logging.info('Setting event "%s" to "%s"', event, fullItemPath)
+						subprocess.call(['exiftool', '-q', '-xmp:label=' + event, fullItemPath])
 
 				# Link to right folder
 				organizeFile(fileName = fullItemPath,
