@@ -1,0 +1,186 @@
+#!/usr/bin/env python
+# coding=utf-8
+from __future__ import print_function
+
+# utf-8 hack
+import sys
+reload(sys)
+sys.setdefaultencoding("utf-8")
+
+from datetime import datetime, timedelta
+import exiftool
+import logging
+from os import link, listdir, makedirs
+from os.path import exists, dirname, isdir, join, splitext
+import re
+from shutil import copyfile
+import subprocess
+
+TOLERABLE_JUMP_IN_DAYS = 14
+
+_et = None
+def getMetadata(fileName):
+	global _et
+	if _et is None:
+		_et = exiftool.ExifTool()
+		_et.start()
+	return _et.get_metadata(fileName)
+
+def organizeFile(fileName, importTo, year, month, day, hour, minute, second, \
+	discriminator = None, event = ''):
+	if event is None or event == '':
+		event = '_misc'
+	extension = splitext(fileName)[1].lower()
+
+	if discriminator is None:
+		discriminator = ''
+	else:
+		discriminator = '_' + str(discriminator)
+
+	canonicalAlbumPath = join(importTo, u"{year:04}/{month:02}/{event}" \
+		.format(**locals()))
+	canonicalFileName = (u"{year:04}{month:02}{day:02}" + 
+		"T{hour:02}{minute:02}{second:02}{discriminator}{extension}").format(**locals())
+
+	if exists(canonicalAlbumPath):
+		if not isdir(canonicalAlbumPath):
+			raise "Album exists, but is not a folder " + canonicalAlbumPath
+	else:
+		makedirs(canonicalAlbumPath)
+
+	canonicalFullName = join(canonicalAlbumPath, canonicalFileName)
+	if exists(canonicalFullName):
+		logging.warning('Photo "%s" already exists, no import done, source "%s"', canonicalFileName, fileName)
+	else:
+		logging.info(u'Copying "%s" to "%s"', fileName, canonicalFullName)
+		link(fileName, canonicalFullName)
+
+class DateException:
+	pass
+
+def getFileInfo(fileName):
+	metadata = getMetadata(fileName)
+
+	event = metadata.get("XMP:Label", None)
+	orientation = metadata.get("EXIF:Orientation", None)
+
+	# Try to get a date when the file was taken, in this order
+	exifDateTime = metadata.get("EXIF:DateTimeOriginal")
+	if exifDateTime is None:
+		exifDateTime = metadata.get("QuickTime:CreateDate")
+	if exifDateTime is None:
+		exifDateTime = metadata.get("RIFF:DateTimeOriginal")
+	if exifDateTime is None:
+		exifDateTime = metadata.get("PDF:CreateDate")
+	if exifDateTime is None:
+		logging.error('Timestamp not found for "%s"', fileName)
+		raise DateException()
+
+	# Sometimes, 1 second resolution is not enough
+	discriminator = metadata.get("MakerNotes:ImageUniqueID")
+	if discriminator is not None:
+		discriminator = discriminator[:8]
+	else:
+		discriminator = metadata.get("EXIF:SubSecTimeOriginal")
+		if discriminator is None:
+			discriminator = metadata.get("MakerNotes:SequenceNumber")
+			if discriminator == 0:
+				discriminator = None
+	
+	# Parse date-time
+	m = re.match("(\d+):(\d+):(\d+) (\d+):(\d+):(\d+)", exifDateTime)
+	if m is None:
+		logging.error('Exif timestamp "%s" is badly formatted in "%s"', exifDateTime, fileName)
+		raise DateException()
+	year, month, day, hour, minute, second = map(int, m.groups())
+	if year < 1900 or year > 2100:
+		logging.error('Year "%d" is weird in "%s"', year, fileName)
+		raise DateException()
+	if month < 1 or month > 12:
+		logging.error('Month "%d" is weird in "%s"', month, fileName)
+		raise DateException()
+	if day < 1 or day > 31:
+		logging.error('Day "%d" is weird in "%s"', day, fileName)
+		raise DateException()
+	if hour < 0 or hour > 23:
+		logging.error('Hour "%d" is weird in "%s"', hour, fileName)
+		raise DateException()
+	if minute < 0 or minute > 59:
+		logging.error('Minute "%d" is weird in "%s"', minute, fileName)
+		raise DateException()
+	if second < 0 or second > 59:
+		logging.error('Second "%d" is weird in "%s"', second, fileName)
+		raise DateException()
+
+	return year, month, day, hour, minute, second, discriminator, orientation, event
+
+def importPath(path, importTo):
+	lastDateTime = None
+	for item in sorted(listdir(path)):
+		# Ignore lame gthumb folders
+		if item == ".comments": continue
+
+		# Ignore exiftool backups
+		if item[-9:] == "_original": continue
+
+		extension = splitext(item)[1].lower()
+		fullItemPath = join(path, item)
+		if isdir(fullItemPath):
+			importPath(fullItemPath, importTo)
+		elif extension in ".3gp .jpg .mov .m4a .mp4 .pdf .png".split():
+			try:
+				year, month, day, hour, minute, second, discriminator, orientation, event = getFileInfo(fullItemPath)
+
+				# Make sure images are physically rotated
+				if orientation is not None and int(orientation) not in [ 0, 1 ]:
+					logging.info('Image is not physically rotated "%s", orientation %d; rotating', fullItemPath, orientation)
+					subprocess.call(['exiftran', '-ai', fullItemPath])
+
+				# Link to right folder
+				organizeFile(fileName = fullItemPath,
+					event = event, year = year, month = month, day = day,
+					hour = hour, minute = minute, second = second,
+					discriminator = discriminator, importTo = importTo)
+	
+				currentDateTime = datetime(year, month, day, hour, minute, second)
+				if event is not None and lastDateTime is not None and \
+						abs(currentDateTime - lastDateTime) > timedelta(days=TOLERABLE_JUMP_IN_DAYS):
+					logging.warning('DateTime jumped by more than %d days when processing image "%s"',
+						TOLERABLE_JUMP_IN_DAYS, fullItemPath)
+				lastDateTime = currentDateTime
+			except DateException:
+				pass
+		elif extension in ".thm".split():
+			logging.info('Ignoring "%s"', fullItemPath)
+		else:
+			logging.warning('Unrecognized extension for "%s"', fullItemPath)
+	
+if __name__ == "__main__":
+	#
+	# Set up logging
+	#
+	fileLogging = logging.FileHandler("/tmp/import-photos.log", encoding = 'utf-8')
+	stderrLogging = logging.StreamHandler()
+
+	formatter = logging.Formatter( '%(asctime)s %(name)s %(levelname)s %(message)s')
+	fileLogging.setFormatter(formatter)
+	stderrLogging.setFormatter(formatter)
+
+	fileLogging.setLevel(logging.DEBUG)
+	stderrLogging.setLevel(logging.WARNING)
+
+	rootLogger = logging.getLogger()
+	rootLogger.addHandler(stderrLogging)
+	rootLogger.addHandler(fileLogging)
+	rootLogger.setLevel(logging.DEBUG)
+	
+	#
+	# Options
+	#
+	importFrom = "/home/cklein/incoming/Photos"
+	importTo   = "/home/cklein/incoming/Photos-ready"
+
+	#
+	# Do it!
+	#
+	importPath(importFrom, importTo)
