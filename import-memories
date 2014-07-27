@@ -159,7 +159,7 @@ if __name__ == "__main__":
 	#
 	# Set up logging
 	#
-	fileLogging = logging.FileHandler("/tmp/import-photos.log", encoding = 'utf-8')
+	fileLogging = logging.FileHandler("/tmp/import-memories.log", encoding = 'utf-8')
 	stderrLogging = logging.StreamHandler()
 
 	formatter = logging.Formatter( '%(asctime)s %(name)s %(levelname)s %(message)s')
@@ -177,8 +177,8 @@ if __name__ == "__main__":
 	#
 	# Options
 	#
-	importFrom = "/home/cklein/incoming/Photos"
-	importTo   = "/home/cklein/incoming/Photos-ready"
+	importFrom = "/home/cklein/incoming/Memories"
+	importTo   = "/home/cklein/incoming/Memories-ready"
 
 	#
 	# Do it!
