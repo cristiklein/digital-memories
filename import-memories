@@ -127,7 +127,16 @@ def importPath(path, importTo):
 		fullItemPath = join(path, item)
 		if isdir(fullItemPath):
 			importPath(fullItemPath, importTo)
-		elif extension in ".3gp .jpg .mov .m4a .mp4 .pdf .png".split():
+		elif extension in ".3gp .avi .jpg .mov .m4a .mp4 .pdf .png".split():
+			# Convert AVIs to MP4s using avconv, which preserved date time metadata
+			if extension == '.avi':
+				mp4FileName = fullItemPath[:-4] + '.mp4'
+				if exists(mp4FileName): continue
+
+				logging.info('Converting %s to %s', fullItemPath, mp4FileName)
+				subprocess.call(['avconv', '-i', fullItemPath, '-c:a', 'mp3', mp4FileName])
+				fullItemPath = mp4FileName
+
 			try:
 				year, month, day, hour, minute, second, discriminator, orientation, event = getFileInfo(fullItemPath)
 
