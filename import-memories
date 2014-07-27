@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import exiftool
 import logging
 from os import link, listdir, makedirs
-from os.path import exists, dirname, isdir, join, splitext
+from os.path import exists, dirname, isdir, join, splitext, expanduser
 import re
 from shutil import copyfile
 import subprocess
@@ -177,8 +177,8 @@ if __name__ == "__main__":
 	#
 	# Options
 	#
-	importFrom = "/home/cklein/incoming/Memories"
-	importTo   = "/home/cklein/incoming/Memories-ready"
+	importFrom = expanduser("~/incoming/Memories")
+	importTo   = expanduser("~/incoming/Memories-ready")
 
 	#
 	# Do it!
