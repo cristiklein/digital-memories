@@ -128,7 +128,7 @@ def importPath(importFrom, importTo, currentPath = None):
 		if item[-9:] == "_original": continue
 
 		# Ignore README file
-		if item == "README": continue
+		if item[:6] == "README": continue
 
 		extension = splitext(item)[1].lower()
 		fullItemPath = join(currentPath, item)
