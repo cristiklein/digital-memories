@@ -127,6 +127,9 @@ def importPath(importFrom, importTo, currentPath = None):
 		# Ignore exiftool backups
 		if item[-9:] == "_original": continue
 
+		# Ignore README file
+		if item == "README": continue
+
 		extension = splitext(item)[1].lower()
 		fullItemPath = join(currentPath, item)
 		if isdir(fullItemPath):
