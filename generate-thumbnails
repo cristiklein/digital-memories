@@ -1,0 +1,22 @@
+#!/bin/bash
+
+set -e
+
+INDIR=$HOME/Memories/2*
+OUTDIR=$HOME/Memories/thumbs
+THUMBNAIL_GEOMETRY="983040@"
+
+IFS=
+find $INDIR -name '*.jpg' -print0 | while read -d '' -r INFILE; do
+	OUTFILE=$OUTDIR/`echo $INFILE | cut -d/ -f5-`
+	if [ -e $OUTFILE ]; then
+		echo Skipping $INFILE "->" $OUTFILE
+		continue
+	fi
+
+	echo $INFILE "->" $OUTFILE
+	mkdir -p `dirname $OUTFILE`
+	convert $INFILE -thumbnail $THUMBNAIL_GEOMETRY $OUTFILE.tmp
+	exiftool -quiet -overwrite_original -comment=Thumbnail -tagsFromFile $INFILE $OUTFILE.tmp
+	mv $OUTFILE.tmp $OUTFILE
+done
