@@ -18,6 +18,7 @@ from shutil import copyfile
 import subprocess
 
 TOLERABLE_JUMP_IN_DAYS = 14
+THUMBNAIL_GEOMETRY = '983040@' # parameter to ImageMagick's convert
 
 _et = None
 def getMetadata(fileName):
@@ -55,6 +56,28 @@ def organizeFile(fileName, importTo, year, month, day, hour, minute, second, \
 	else:
 		logging.info(u'Copying "%s" to "%s"', fileName, canonicalFullName)
 		link(fileName, canonicalFullName)
+
+	# Thumbnail-related info
+	canonicalThumbAlbumPath = join(importTo, 'thumbs',
+		u"{year:04}/{month:02}/{event}".format(**locals()))
+
+	returnInfo = { }
+	returnInfo['src'] = fileName
+	returnInfo['dst'] = canonicalFullName
+	returnInfo['thumbDst'] = join(canonicalThumbAlbumPath, canonicalFileName)
+	return returnInfo
+
+def generateThumbnail(src, dst):
+	canonicalAlbumPath = dirname(dst)
+	if exists(canonicalAlbumPath):
+		if not isdir(canonicalAlbumPath):
+			raise "Album exists, but is not a folder " + canonicalAlbumPath
+	else:
+		makedirs(canonicalAlbumPath)
+
+	subprocess.call(['convert', src, '-thumbnail', THUMBNAIL_GEOMETRY, dst])
+	subprocess.call(['exiftool', '-quiet', '-overwrite_original',
+		'-comment=Thumbnail', '-tagsFromFile', src, dst])
 
 class DateException:
 	pass
@@ -162,11 +185,16 @@ def importPath(importFrom, importTo, currentPath = None):
 						subprocess.call(['exiftool', '-q', '-xmp:label=' + event, fullItemPath])
 
 				# Link to right folder
-				organizeFile(fileName = fullItemPath,
+				info = organizeFile(fileName = fullItemPath,
 					event = event, year = year, month = month, day = day,
 					hour = hour, minute = minute, second = second,
 					discriminator = discriminator, importTo = importTo)
-	
+
+				# Generate thumbnail
+				if extension == '.jpg':
+					logging.info('Generating thumbnail "%s"', info['thumbDst'])
+					generateThumbnail(src = fullItemPath, dst = info['thumbDst'])
+
 				currentDateTime = datetime(year, month, day, hour, minute, second)
 				if event is not None and lastDateTime is not None and \
 						abs(currentDateTime - lastDateTime) > timedelta(days=TOLERABLE_JUMP_IN_DAYS):
@@ -192,7 +220,7 @@ if __name__ == "__main__":
 	stderrLogging.setFormatter(formatter)
 
 	fileLogging.setLevel(logging.DEBUG)
-	stderrLogging.setLevel(logging.WARNING)
+	stderrLogging.setLevel(logging.INFO)
 
 	rootLogger = logging.getLogger()
 	rootLogger.addHandler(stderrLogging)
