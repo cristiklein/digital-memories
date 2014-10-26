@@ -7,7 +7,7 @@ OUTDIR=$HOME/Memories/thumbs
 THUMBNAIL_GEOMETRY="983040@"
 
 IFS=
-find $INDIR -name '*.jpg' -print0 | while read -d '' -r INFILE; do
+find -L $INDIR -name '*.jpg' -print0 | while read -d '' -r INFILE; do
 	OUTFILE=$OUTDIR/`echo $INFILE | cut -d/ -f5-`
 	if [ -e $OUTFILE ]; then
 		echo Skipping $INFILE "->" $OUTFILE
